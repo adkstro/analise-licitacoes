@@ -1,0 +1,40 @@
+Objetivo: identificar quais protocolos são materialmente credenciamento (contrata sem concorrência todo mundo que se inscrever pra vaga e tiver os requisitos)
+
+lembrar:
+- escopo material amplo (inclui tudo o que tem a ver com a lei)
+- Todo Protocolo incluído deve receber um grau de evidência
+- Incluir os campos analíticos do GI
+
+1- ler campos e encontrar dupicadas 
+2- selecionar candidatos:
+	a. tem a modalidade cadastrada como credenciamento
+	b. o objeto diz que é credenciamento
+	c. menciona um processo de credenciamento no objeto
+	d. tem palavra chaves relacionadas a credenciamento no objeto
+3 - tentar provar que os candidatos NÃO são credenciamento
+	- "credenciada" é o adjetivo pra descrever a empresa, e não o tipo de contratação
+	- adicionar coluna para a justificativa
+4 - buscar por falsos negativos
+        1. leia o Objeto integralmente;
+        2. verifique a Modalidade;
+        3. verifique o regime jurídico (lei contida na modalidade);
+        4. procure referência a procedimento originário;
+        5. avalie o contexto;
+        6. decida se existe vínculo material.
+5 - caso em dúvida, comparar com outros protocolos da base 
+	- especificar como EVIDÊNCIA CORROBORADA INTERNAMENTE.
+6 - passar os incluídos pelas verificações obrigatórias de qualidade
+
+parei no ponto 15
+
+
+
+
+
+
+===========================================================================
+Alguns problemas e melhorias:
+
+O problema é que a parte 5-9 (e 11) precisa ser implementada com regex, e o resto com a api do gemini, só que todo o prompt é feito pra ser passado pra api e não pra o agente kk
+
+- diferenciar entre o prompt da api e o prompt do agente

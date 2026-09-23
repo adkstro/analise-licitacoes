@@ -24,8 +24,23 @@ lembrar:
 5 - caso em dúvida, comparar com outros protocolos da base 
 	- especificar como EVIDÊNCIA CORROBORADA INTERNAMENTE.
 6 - passar os incluídos pelas verificações obrigatórias de qualidade
+7 - testes de estresse do modelo
+8 - gerar xlsx com
+		- Total de linhas da base
+		- Protocolos distintos
+		- Protocolos repetidos em múltiplas linhas da fonte
+		- Candidatos inicialmente identificados
+		- Incluídos Grau A
+		- Incluídos Grau B
+		- Incluídos Grau C
+		- Validação Pendente
+		- Exclusões por Menção Incidental
+		- Exclusões por ausência de evidência material
+		- Falsos negativos identificados
+		- Universo final validado
+		- Duplicidades de Protocolo no universo final
 
-parei no ponto 15
+
 
 
 

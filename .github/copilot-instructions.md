@@ -18,3 +18,5 @@ O projeto segue o princípio do Cascade Filtering (Filtro em Cascata):
 - Ao gerar código para uma nova fase, encapsule a lógica em uma função principal tipada (ex: `def executar_fase_X(df: pd.DataFrame) -> pd.DataFrame:`).
 - Inclua todos os `imports` necessários no topo do bloco de código.
 - Retorne apenas o código. Suprima explicações genéricas, saudações ou comentários extensos fora do bloco de código, pois a resposta será injetada via recurso "Apply in Editor".
+
+## 5. Diretriz de Roteamento: Salve no arquivo fase_X.py dentro da função def executar_fase_X(df: pd.DataFrame)

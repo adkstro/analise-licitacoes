@@ -290,12 +290,3 @@ def analyze(df):
 if __name__ == "__main__":
     df_raw = read_data(FILE_PATH)
     analyze(df_raw)
-
-
-        1. leia o Objeto integralmente;
-        2. verifique a Modalidade;
-        3. verifique o regime jurídico;
-        4. procure referência a procedimento originário;
-        5. avalie o contexto;
-        6. decida se existe vínculo material.
-

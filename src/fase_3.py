@@ -43,7 +43,7 @@ async def inferir_registro(client: genai.Client, protocolo: str, prompt_usuario:
             # Novo padrão google-genai com suporte nativo a Pydantic
             resposta = await asyncio.to_thread(
                 client.models.generate_content,
-                model="gemini-1.5-flash",
+                model="gemini-3.1-flash-lite",
                 contents=prompt_usuario,
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,

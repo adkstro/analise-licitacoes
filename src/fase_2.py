@@ -51,7 +51,7 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # Citações legais referentes a credenciamento (Art. 79 da 14.133 e Art. 25 da 8.666)
     cond_leis = texto_busca.str.contains(r'art[\.\s]+79.*?14\.?133|art[\.\s]+25.*?8\.?666', case=False, regex=True, na=False)
     
-    cond_valor = df_analytical['Valor'] >= 500000.00
+    cond_valor = df_analytical['Valor'] >= 1000000.00
     
     # Atualiza is_candidate
     is_candidate = is_candidate | cond_modalidade | cond_leis | cond_valor

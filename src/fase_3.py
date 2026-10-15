@@ -34,6 +34,8 @@ O credenciamento só deve ser utilizado quando a competição tradicional for in
 Atenção à Padronização e Continuidade:
 Não assuma que um serviço é contínuo e padronizado se não houver indícios claros no texto. Preste extrema atenção a termos que quebram a lógica do credenciamento, como contratações de caráter emergencial.
 
+A inexigibilidade permite a contratação direta de um artista específico ou um profissional de notória especialização. Se o objeto não for único ou exclusivo, a inexigibilidade é inaplicável.
+
 O Ponto Crítico de Auditoria (A Caça à Fraude):
 Prefeituras mentem no cadastro. Baseie-se SEMPRE na realidade material do texto e no preço. Como não há disputa de lances, o edital deve ser permanentemente aberto a novos interessados.
 

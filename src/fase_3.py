@@ -134,14 +134,11 @@ def executar_fase_3(df_analytical: pd.DataFrame, df_fila_llm: pd.DataFrame) -> p
     logging.info("Realizando merge estruturado no DataFrame analítico...")
     
     # Seta o index como chave primária para garantir update perfeito
-    df_analytical.set_index('Protocolo', inplace=True)
     df_resultados.set_index('Protocolo', inplace=True)
     
-    # O método update() sobrescreve apenas os valores de df_resultados nas colunas coincidentes,
-    # mantendo intactos os registros (como descartes e rotas expressas) que não foram pro LLM.
-    df_analytical.update(df_resultados)
-    
-    # Retorna ao formato padrão
+    # Atribuição direta garante que valores None/pd.NA também limpem o 'GRAU D'
+    colunas_comuns = df_resultados.columns.intersection(df_analytical.columns)
+    df_analytical.loc[df_resultados.index, colunas_comuns] = df_resultados[colunas_comuns]
     df_analytical.reset_index(inplace=True)
     
     logging.info("Fase 3 concluída com sucesso. Base analítica enriquecida com insights semânticos.")

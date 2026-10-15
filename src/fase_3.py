@@ -134,12 +134,27 @@ def executar_fase_3(df_analytical: pd.DataFrame, df_fila_llm: pd.DataFrame) -> p
     logging.info("Realizando merge estruturado no DataFrame analítico...")
     
     # Seta o index como chave primária para garantir update perfeito
-    df_resultados.set_index('Protocolo', inplace=True)
-    
-    # Atribuição direta garante que valores None/pd.NA também limpem o 'GRAU D'
+    reset_depois = False
+    if 'Protocolo' in df_analytical.columns:
+        df_analytical.set_index('Protocolo', inplace=True)
+        reset_depois = True
+        
+    if 'Protocolo' in df_resultados.columns:
+        df_resultados.set_index('Protocolo', inplace=True)
+        
+    protocolos_comuns = df_resultados.index.intersection(df_analytical.index)
     colunas_comuns = df_resultados.columns.intersection(df_analytical.columns)
-    df_analytical.loc[df_resultados.index, colunas_comuns] = df_resultados[colunas_comuns]
-    df_analytical.reset_index(inplace=True)
+    
+    # Coerção defensiva de dtypes para evitar LossySetitemError/TypeError em colunas nulas
+    for col in colunas_comuns:
+        if df_analytical[col].dtype != df_resultados[col].dtype:
+            df_analytical[col] = df_analytical[col].astype('object')
+            
+    # Atribuição direta garante que valores None/pd.NA também limpem o 'GRAU D'
+    df_analytical.loc[protocolos_comuns, colunas_comuns] = df_resultados.loc[protocolos_comuns, colunas_comuns]
+    
+    if reset_depois:
+        df_analytical.reset_index(inplace=True)
     
     logging.info("Fase 3 concluída com sucesso. Base analítica enriquecida com insights semânticos.")
     

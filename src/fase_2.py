@@ -160,7 +160,7 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # 7. ISOLAMENTO DA FILA SEMÂNTICA (ZONA CINZENTA)
     # -------------------------------------------------------------------------
     df_analytical.loc[is_candidate, 'GI - Resultado Etapa 1'] = 'FILA PARA LLM'
-    df_analytical.loc[is_candidate, 'GI - Grau de Evidência'] = 'GRAU D — NÃO AVALIADO (FILA)'
+    df_analytical.loc[is_candidate, 'GI - Grau de Evidência'] = 'NA — NÃO AVALIADO (FILA)'
     
     # Extrai o subconjunto isolado para o LLM com as colunas obrigatórias
     colunas_fila = ['Protocolo', 'Modalidade', 'Objeto', 'GI - Regime Jurídico Informado', 'Valor']

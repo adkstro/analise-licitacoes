@@ -17,8 +17,8 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 class AnaliseCredenciamento(BaseModel):
     justificativa_sintetica: str = Field(..., description="Raciocínio passo a passo analisando a essência material do texto frente à modalidade informada. Máx 40 palavras.")
     divergencia_cadastral: bool = Field(..., description="True se a essência material do texto contradiz a Modalidade informada.")
-    resultado_etapa_1: Literal['INCLUÍDO', 'EXCLUÍDO — SEM EVIDÊNCIA MATERIAL', 'EXCLUÍDO — MENÇÃO INCIDENTAL']
-    grau_evidencia: Optional[Literal['GRAU A — EVIDÊNCIA DIRETA', 'GRAU B — SINTOMÁTICO', 'GRAU C — TEXTO VAGO/GENÉRICO']] = None
+    resultado_etapa_1: Literal['INCLUÍDO', 'EXCLUÍDO', 'VALIDAÇÃO PENDENTE']
+    grau_evidencia: Optional[Literal['GRAU A — INEQUÍVOCA', 'GRAU B — SINTOMÁTICO', 'GRAU C — SEM EVIDÊNCIA', 'GRAU D — TEXTO VAGO/GENÉRICO']] = None
 
 # 2. O SYSTEM PROMPT (MANUAL DO AUDITOR DE CONTROLE EXTERNO)
 SYSTEM_PROMPT = """Você é um Auditor Sênior de Controle Externo de um Tribunal de Contas no Brasil, especialista em licitações (Lei 14.133/21). Sua missão é analisar textos sujos e confusos de contratações públicas para encontrar o uso (regular ou fraudulento) do instituto do 'Credenciamento' e da 'Inexigibilidade'.
@@ -37,11 +37,10 @@ A inexigibilidade ocorre quando a disputa é logicamente impossível. Identifiqu
     Artista Consagrado: Contratação direta consagrada pela crítica/público, feita diretamente ou via empresário exclusivo. É fraude o uso de cartas de exclusividade restritas a um único dia/evento (atravessadores).
     Notória Especialização: Serviços técnicos predominantemente intelectuais e singulares (ex: pareceristas, auditorias, consultorias complexas). É fraude o seu uso para serviços comuns ou de publicidade e propaganda (proibido).
     Aquisição/Locação de Imóveis: Instalações ou localização geográfica tornam um imóvel específico a única opção viável.
+    A inexigibilidade permite a contratação direta de um artista específico ou um profissional de notória especialização. Se o objeto não for único ou exclusivo, a inexigibilidade é inaplicável.
 
 Atenção à Padronização e Continuidade:
 Não assuma que um serviço é contínuo e padronizado se não houver indícios claros no texto. Preste extrema atenção a termos que quebram a lógica do credenciamento, como contratações de caráter emergencial.
-
-A inexigibilidade permite a contratação direta de um artista específico ou um profissional de notória especialização. Se o objeto não for único ou exclusivo, a inexigibilidade é inaplicável.
 
 REGRAS ESPECÍFICAS PARA AGRICULTURA FAMILIAR (PNAE / PAA / CHAMADA PÚBLICA):
 A aquisição de gêneros alimentícios da agricultura familiar e do empreendedor familiar rural (no âmbito do PNAE — Alimentação Escolar ou do PAA) é realizada por Chamada Pública/Credenciamento, caracterizada por preço fixado pelo órgão e pluralidade de agricultores/cooperativas credenciados:
@@ -59,7 +58,8 @@ Prefeituras mentem no cadastro. Baseie-se SEMPRE na realidade material do texto 
 Regras de Classificação (Grau):
     GRAU A: Inequívoca pluralidade, tabela fixa, sem exclusividade no texto.
     GRAU B: Fortes indícios no jargão (ex: contratação de médicos em regime de plantão, atração musical para evento).
-    GRAU C: Texto excessivamente vago ou genérico, não sendo possível cravar a natureza da contratação apenas com o objeto."""
+    GRAU C: O texto é perfeitamente claro, mas descreve algo singular incompatível com o instituto (uma obra fechada, aquisição de um carro específico). A justificativa_sintetica deve explicar por que a singularidade do objeto impede o credenciamento.
+    GRAU D: Texto excessivamente vago ou genérico, não sendo possível cravar a natureza da contratação apenas com o objeto. Esta é a justificativa exata do roteamento "VALIDAÇÃO PENDENTE"."""
 
 # 3. CONTROLADOR DE TAXA ASSÍNCRONO (PARA A CHAVE GRATUITA)
 class RateLimiterAsync:

@@ -51,7 +51,14 @@ def executar_fase_4(df: pd.DataFrame) -> pd.DataFrame:
             # A Promoção (Up-grade para Grau A — Evidência Direta)
             df_analytical.loc[indices_promo, 'GI - Grau de Evidência'] = 'GRAU A — EVIDÊNCIA DIRETA'
             df_analytical.loc[indices_promo, 'GI - Corroboração Utilizada'] = 'CORROBORAÇÃO INTERNA (CONTRATAÇÕES IRMÃS)'
-            df_analytical.loc[indices_promo, 'GI - Protocolo Relacionado'] = protocolos_irmaos
+
+            # Preserva eventual número de protocolo já extraído na Fase 2 ao concatenar os irmãos
+            atuais = df_analytical.loc[indices_promo, 'GI - Protocolo Relacionado']
+            novos_relacionados = [
+                f"{atual} | {irmao}" if pd.notna(atual) and str(atual).strip() != "" and str(atual).strip() not in irmao else irmao
+                for atual, irmao in zip(atuais, protocolos_irmaos)
+            ]
+            df_analytical.loc[indices_promo, 'GI - Protocolo Relacionado'] = novos_relacionados
             
             logging.info(f"{len(indices_promo)} registros promovidos a 'GRAU A — EVIDÊNCIA DIRETA' via Corroboração Interna.")
         else:

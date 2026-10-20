@@ -32,8 +32,9 @@ SEMANTIC_THRESHOLD = 0.35
 def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Fase 2: Triagem em Cascata (Determinismo e Vetorização).
-    Objetivo: Separar candidatos óbvios, descartar ruídos e peneirar a zona cinzenta
-    via similaridade semântica para avaliação posterior do LLM.
+    Objetivo: Classificar diretamente casos de evidência cabal (vínculo expresso a protocolo
+    de credenciamento no objeto -> INCLUÍDO / GRAU A), descartar ruídos e isolar a zona cinzenta
+    para avaliação posterior do LLM.
     """
     df_analytical = df.copy()
 
@@ -45,21 +46,70 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # Prepara textos para busca combinada (Modalidade + Objeto)
     texto_busca = (df_analytical['Modalidade'].fillna('') + ' ' + df_analytical['Objeto'].fillna('')).astype(str)
     
-    # Cria a flag temporária de candidato
+    # Cria a flag temporária de candidato para a fila do LLM
     is_candidate = pd.Series(False, index=df_analytical.index)
+
+    # -------------------------------------------------------------------------
+    # 1. INCLUSÃO DIRETA (GRAU A): VÍNCULO EXPRESSO A PROTOCOLO DE CREDENCIAMENTO NO OBJETO
+    # -------------------------------------------------------------------------
+    # Grupo 1: Citação completa (ex: "EDITAL DE CREDENCIAMENTO NO 002/2025")
+    # Grupo 2: Número do protocolo/processo relacionado (ex: "002/2025", "00009/2025", "001-2026")
+    regex_vinculo_credenciamento = (
+        r'(?i)((?:(?:EDITAL|PROCESSO(?:\s+AUXILIAR|\s+ADMINISTRATIVO)?|CHAMAMENTO\s+PUBLICO)\s+(?:DE\s+|[-–/]\s*)?)?'
+        r'CREDENCIAMENT[O0]'
+        r'(?:\s+(?:DE\s+(?:SERVICOS?|COMPRAS?|SAUDE|EXAMES?)|PUBLICO|ELETRONICO|ESPECIAL|MEDICO))?'
+        r'\s*(?:N[O0º°\.]*|NUM(?:ERO)?\.?)?\s*[:\.\-]?\s*'
+        r'((?:[A-Z0-9]{2,15}[/-])?\d{1,6}(?:\.\d{1,4})?\s*[/-]\s*(?:20)?\d{2,4}))'
+    )
+
+    extracao_vinculo = df_analytical['Objeto'].fillna('').str.extract(regex_vinculo_credenciamento, expand=True)
+    citacao_extraida = extracao_vinculo[0]
+    protocolo_rel_extraido = extracao_vinculo[1]
+    mask_vinculo_grau_a = citacao_extraida.notna()
+
+    if mask_vinculo_grau_a.any():
+        modalidade_compativel = df_analytical.loc[mask_vinculo_grau_a, 'Modalidade'].fillna('').str.contains(
+            r'inexigibilidade|credenciamento|chamamento|chamada\s+publica', case=False, regex=True
+        )
+        divergencia_vinculo = (~modalidade_compativel).values
+
+        citacao_formatada = citacao_extraida.loc[mask_vinculo_grau_a].str.strip().str.upper()
+        numero_protocolo_rel = protocolo_rel_extraido.loc[mask_vinculo_grau_a].str.replace(r'\s+', '', regex=True).str.upper()
+
+        justificativa_padrao = (
+            'Incluído deterministicamente (Evidência Direta): O objeto vincula expressamente a contratação ao instrumento formal ('
+            + citacao_formatada + ').'
+        )
+        justificativa_divergente = (
+            'Incluído deterministicamente (Evidência Direta): O objeto vincula expressamente a contratação ao instrumento formal ('
+            + citacao_formatada + '), porém a modalidade cadastrada diverge do instituto.'
+        )
+
+        df_analytical.loc[mask_vinculo_grau_a, 'GI - Fundamentação Contextual'] = np.where(
+            divergencia_vinculo, justificativa_divergente, justificativa_padrao
+        )
+        df_analytical.loc[mask_vinculo_grau_a, 'GI - Grau de Evidência'] = 'GRAU A — EVIDÊNCIA DIRETA'
+        df_analytical.loc[mask_vinculo_grau_a, 'GI - Resultado Etapa 1'] = 'INCLUÍDO'
+        df_analytical.loc[mask_vinculo_grau_a, 'GI - Divergência Cadastral Aparente'] = divergencia_vinculo
+        df_analytical.loc[mask_vinculo_grau_a, 'GI - Protocolo Relacionado'] = numero_protocolo_rel
+
+        logging.info(
+            f"Filtro Direto Grau A (Vínculo a Protocolo de Credenciamento): {int(mask_vinculo_grau_a.sum())} "
+            f"registros classificados diretamente como INCLUÍDO (Divergências: {int(divergencia_vinculo.sum())})."
+        )
     
     # -------------------------------------------------------------------------
-    # 2. A ROTA EXPRESSA (CANDIDATOS OBRIGATÓRIOS)
+    # 2. A ROTA EXPRESSA (CANDIDATOS OBRIGATÓRIOS PARA A FILA DO LLM)
     # -------------------------------------------------------------------------
+    mask_nao_classificado = df_analytical['GI - Resultado Etapa 1'] == 'NÃO CLASSIFICADO'
+
     cond_modalidade = df_analytical['Modalidade'].str.contains(r'inexigibilidade|credenciamento', case=False, na=False)
     
     # Citações legais referentes a credenciamento (Art. 79 da 14.133 e Art. 25 da 8.666)
     cond_leis = texto_busca.str.contains(r'art[\.\s]+79.*?14\.?133|art[\.\s]+25.*?8\.?666', case=False, regex=True, na=False)
     
-    #cond_valor = df_analytical['Valor'] >= 1000000.00
-    
-    # Atualiza is_candidate
-    is_candidate = is_candidate | cond_modalidade | cond_leis #| cond_valor
+    # Atualiza is_candidate apenas para quem ainda não foi classificado no Passo 1
+    is_candidate = is_candidate | (mask_nao_classificado & (cond_modalidade | cond_leis))
     
     # -------------------------------------------------------------------------
     # 3. FALSOS POSITIVOS (MENÇÃO INCIDENTAL)
@@ -67,8 +117,8 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     regex_incidental = r'rede\s+credenciada|oficinas?\s+credenciadas?|hospital\s+credenciado|credenciad[ao]\s+pelo\s+fabricante'
     cond_incidental = df_analytical['Objeto'].str.contains(regex_incidental, case=False, regex=True, na=False)
     
-    # Aplica exclusão apenas se não for já um candidato da Rota Expressa
-    mask_excluir_incidental = cond_incidental & (~is_candidate)
+    # Aplica exclusão apenas se ainda estiver NÃO CLASSIFICADO e não for candidato da Rota Expressa
+    mask_excluir_incidental = mask_nao_classificado & cond_incidental & (~is_candidate)
     df_analytical.loc[mask_excluir_incidental, 'GI - Fundamentação Contextual'] = (
         'Excluído deterministicamente (Menção Incidental): O termo credenciado descreve apenas a rede/prestador e não a modalidade de contratação.'
     )
@@ -99,7 +149,7 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     ]
     regex_sintomas = '|'.join(sintomas)
     
-    # Só avalia quem ainda não é candidato e não foi excluído
+    # Só avalia quem ainda não é candidato e continua NÃO CLASSIFICADO
     mask_validos = (~is_candidate) & (df_analytical['GI - Resultado Etapa 1'] == 'NÃO CLASSIFICADO')
     cond_sintomas = texto_busca.str.contains(regex_sintomas, case=False, regex=True, na=False)
     
@@ -190,7 +240,11 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     
     df_fila_llm = df_analytical.loc[is_candidate, colunas_presentes].copy()
     
-    qtde_excluidos = len(df_analytical) - len(df_fila_llm)
-    logging.info(f"Fase 2 concluída. Descartados: {qtde_excluidos} | Direcionados para LLM: {len(df_fila_llm)}")
+    qtde_incluidos_direto = int((df_analytical['GI - Resultado Etapa 1'] == 'INCLUÍDO').sum())
+    qtde_excluidos = int((df_analytical['GI - Resultado Etapa 1'] == 'EXCLUÍDO').sum())
+    logging.info(
+        f"Fase 2 concluída. Incluídos Diretos (Grau A): {qtde_incluidos_direto} | "
+        f"Descartados (Grau C): {qtde_excluidos} | Direcionados para LLM: {len(df_fila_llm)}"
+    )
     
     return df_analytical, df_fila_llm

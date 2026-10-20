@@ -140,11 +140,12 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
                         worksheet.set_column(col_idx, col_idx, 25, fmt_string)
                         continue
                         
-                    # Estima tamanho máximo considerando amostra do conteúdo (c-speed) e cabeçalho
+                    # Estima tamanho máximo de forma vetorizada e segura contra NaN/pd.NA
                     tamanho_cabecalho = len(str(col_name))
-                    tamanho_dado_max = df_aba[col_name].head(1000).astype(str).map(len).max() 
+                    tamanho_dado_max = df_aba[col_name].head(1000).fillna('').astype(str).str.len().max()
                     if pd.isna(tamanho_dado_max):
                         tamanho_dado_max = 0
+                    tamanho_dado_max = int(tamanho_dado_max)
                     
                     tamanho_ideal = max(tamanho_cabecalho, tamanho_dado_max) + 2
                     

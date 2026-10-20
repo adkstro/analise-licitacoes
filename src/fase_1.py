@@ -123,12 +123,13 @@ def executar_fase_1(df_ou_caminho: Union[pd.DataFrame, str]) -> Tuple[pd.DataFra
     df_analytical['Valor'] = tratar_valor_financeiro(df_analytical['Valor'])
     
     # 7. INICIALIZAÇÃO DA ESTRUTURA ANALÍTICA (GI) NA ORDEM LÓGICA DE PREENCHIMENTO
-    df_analytical['GI - Fundamentação Contextual'] = pd.NA
-    df_analytical['GI - Grau de Evidência'] = pd.NA
-    df_analytical['GI - Resultado Etapa 1'] = 'NÃO CLASSIFICADO'
+    # Tipagem explícita como 'object' evita que colunas iniciadas com nulos virem float64 no Pandas
+    df_analytical['GI - Fundamentação Contextual'] = pd.Series(pd.NA, index=df_analytical.index, dtype='object')
+    df_analytical['GI - Grau de Evidência'] = pd.Series(pd.NA, index=df_analytical.index, dtype='object')
+    df_analytical['GI - Resultado Etapa 1'] = pd.Series('NÃO CLASSIFICADO', index=df_analytical.index, dtype='object')
     df_analytical['GI - Divergência Cadastral Aparente'] = False
-    df_analytical['GI - Corroboração Utilizada'] = pd.NA
-    df_analytical['GI - Protocolo Relacionado'] = pd.NA
+    df_analytical['GI - Corroboração Utilizada'] = pd.Series(pd.NA, index=df_analytical.index, dtype='object')
+    df_analytical['GI - Protocolo Relacionado'] = pd.Series(pd.NA, index=df_analytical.index, dtype='object')
     
     # 8. ENRIQUECIMENTO: REGIME JURÍDICO INFORMADO
     # Cria uma string concatenada limpa para busca com regex

@@ -8,20 +8,23 @@ from typing import Literal, Optional, Union
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field
-from tenacity import retry, wait_exponential, stop_after_attempt, before_sleep_log
+from tenacity import retry, wait_exponential, stop_after_attempt
 from tqdm import tqdm
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 
-# Configuração de log
+# Configuração de log principal
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+# Silencia logs verbosos de bibliotecas internas (AFC, urllib3, httpx) para manter a barra limpa
+for logger_name in ["google", "google.genai", "urllib3", "httpx", "httpcore"]:
+    logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 # Arquivo padrão de persistência incremental (Checkpoint)
 ARQUIVO_CHECKPOINT_PADRAO = "checkpoint_fase_3.jsonl"
 
 # 1. DEFINIÇÃO DO SCHEMA PYDANTIC NA ORDEM ESTRITA DE RACIOCÍNIO (CHAIN OF THOUGHT)
-# Ordem exigida: Fundamentação Contextual -> Grau de Evidência -> Resultado Etapa 1 -> Divergência Cadastral Aparente
 class AnaliseCredenciamento(BaseModel):
     justificativa_sintetica: str = Field(
         ...,
@@ -129,7 +132,6 @@ def _impor_consistencia_regras(
     else:
         grau = 'GRAU D — TEXTO VAGO/GENÉRICO'
         resultado_corrigido = 'VALIDAÇÃO PENDENTE'
-        # Regra pétrea: se for Grau D / VALIDAÇÃO PENDENTE, divergencia_cadastral é obrigatoriamente False
         divergencia_corrigida = False
 
     return grau, resultado_corrigido, divergencia_corrigida
@@ -233,7 +235,6 @@ class MonitorProgresso:
         }
         self.divergencias = 0
 
-        # Barra de progresso compatível com terminal e Jupyter Notebook (sem exigir ipywidgets)
         self.pbar = tqdm(
             total=total_lote,
             desc="🔍 Auditando com Gemini",
@@ -253,22 +254,23 @@ class MonitorProgresso:
             if resultado.get('GI - Divergência Cadastral Aparente'):
                 self.divergencias += 1
 
-            self._atualizar_barra(ultimo_proto=resultado.get('Protocolo', ''))
+            self._atualizar_barra()
 
     async def registrar_erro(self, protocolo: str) -> None:
         async with self.lock:
             self.concluidos_lote += 1
             self.erros += 1
-            self._atualizar_barra(ultimo_proto=f"{protocolo} (FALHA)")
+            self._atualizar_barra()
 
-    def _atualizar_barra(self, ultimo_proto: str) -> None:
+    def _atualizar_barra(self) -> None:
         total_acumulado_global = self.ja_processados_antes + self.sucessos
         faltam_lote = self.total_lote - self.concluidos_lote
         self.pbar.set_postfix_str(
             f"Inc:{self.contagem_resultados['INCLUÍDO']} "
             f"Exc:{self.contagem_resultados['EXCLUÍDO']} "
             f"Pend:{self.contagem_resultados['VALIDAÇÃO PENDENTE']} "
-            f"Div:{self.divergencias} | "
+            f"Div:{self.divergencias} "
+            f"Erros:{self.erros} | "
             f"Global:{total_acumulado_global}/{self.total_fila_geral} "
             f"(Faltam {faltam_lote} no lote)"
         )
@@ -386,7 +388,8 @@ async def orquestrar_inferencia(
         env_modo = os.environ.get("GEMINI_MODO_GRATUITO", "false").strip().lower()
         modo_gratuito = env_modo in ("true", "1", "t", "sim", "yes")
 
-    modelo_final = modelo or ("gemini-3.1-flash-lite" if modo_gratuito else "gemini-2.5-flash")
+    # Atualizado para gemini-3.8-flash (ativo) para modo pago e gemini-3.1-flash-lite para gratuito
+    modelo_final = modelo or ("gemini-3.1-flash-lite" if modo_gratuito else "gemini-3.8-flash")
 
     print("\n" + "=" * 75)
     print("📊 PAINEL DE CONTROLE — FASE 3 (JULGAMENTO SEMÂNTICO VIA LLM)")
@@ -426,7 +429,6 @@ async def orquestrar_inferencia(
         df_processar = df_pendentes.copy()
         semaphore = asyncio.Semaphore(10)
         rate_limiter = None
-        # Estimativa média em modo pago com 10 workers (~0.4s efetivo por registro)
         tempo_estimado_seg = len(df_processar) * 0.4
 
         print(f" • Modo de Execução                  : PAGO / ALTA VELOCIDADE ({modelo_final})")
@@ -438,7 +440,7 @@ async def orquestrar_inferencia(
     print("=" * 75 + "\n")
     sys.stdout.flush()
 
-    # Construção vetorizada dos prompts (sem .iterrows())
+    # Construção vetorizada dos prompts
     prompts_series = (
         "Protocolo: " + df_processar['Protocolo'].fillna('').astype(str) + "\n"
         + "Modalidade: " + df_processar['Modalidade'].fillna('').astype(str) + "\n"
@@ -523,6 +525,20 @@ def executar_fase_3(
 
     df_analytical_out = df_analytical.copy()
     df_analytical_out['Protocolo'] = df_analytical_out['Protocolo'].astype(str)
+
+    # Garante que colunas textuais/booleanas de destino tenham dtype 'object' antes do update()
+    # (previne LossySetitemError / TypeError caso uma coluna de nulos tenha sido inferida como float64 pelo Pandas)
+    colunas_alvo_update = [
+        'GI - Fundamentação Contextual',
+        'GI - Grau de Evidência',
+        'GI - Resultado Etapa 1',
+        'GI - Divergência Cadastral Aparente',
+        'GI - Corroboração Utilizada',
+        'GI - Protocolo Relacionado'
+    ]
+    for col_alvo in colunas_alvo_update:
+        if col_alvo in df_analytical_out.columns:
+            df_analytical_out[col_alvo] = df_analytical_out[col_alvo].astype('object')
 
     df_fila_preparada = df_fila_llm.copy()
     df_fila_preparada['Protocolo'] = df_fila_preparada['Protocolo'].astype(str)

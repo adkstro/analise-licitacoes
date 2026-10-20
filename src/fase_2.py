@@ -36,6 +36,11 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     via similaridade semântica para avaliação posterior do LLM.
     """
     df_analytical = df.copy()
+
+    # Garante que colunas textuais GI tenham dtype 'object' (evita LossySetitemError quando iniciadas com NaN/float64)
+    for col_gi in ['GI - Fundamentação Contextual', 'GI - Grau de Evidência', 'GI - Resultado Etapa 1', 'GI - Corroboração Utilizada', 'GI - Protocolo Relacionado']:
+        if col_gi in df_analytical.columns:
+            df_analytical[col_gi] = df_analytical[col_gi].astype('object')
     
     # Prepara textos para busca combinada (Modalidade + Objeto)
     texto_busca = (df_analytical['Modalidade'].fillna('') + ' ' + df_analytical['Objeto'].fillna('')).astype(str)

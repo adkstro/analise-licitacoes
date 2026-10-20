@@ -13,6 +13,11 @@ def executar_fase_4(df: pd.DataFrame) -> pd.DataFrame:
     e executar os unit tests finais.
     """
     df_analytical = df.copy()
+
+    # Garante tipagem 'object' nas colunas textuais GI antes de atribuições vetorizadas
+    for col_gi in ['GI - Fundamentação Contextual', 'GI - Grau de Evidência', 'GI - Resultado Etapa 1', 'GI - Corroboração Utilizada', 'GI - Protocolo Relacionado']:
+        if col_gi in df_analytical.columns:
+            df_analytical[col_gi] = df_analytical[col_gi].astype('object')
     
     # -------------------------------------------------------------------------
     # 1. CORROBORAÇÃO INTERNA (EVIDÊNCIA DE MERCADO FLUIDO)

@@ -64,7 +64,12 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     
     # Aplica exclusão apenas se não for já um candidato da Rota Expressa
     mask_excluir_incidental = cond_incidental & (~is_candidate)
-    df_analytical.loc[mask_excluir_incidental, 'GI - Resultado Etapa 1'] = 'EXCLUÍDO — MENÇÃO INCIDENTAL'
+    df_analytical.loc[mask_excluir_incidental, 'GI - Fundamentação Contextual'] = (
+        'Excluído deterministicamente (Menção Incidental): O termo credenciado descreve apenas a rede/prestador e não a modalidade de contratação.'
+    )
+    df_analytical.loc[mask_excluir_incidental, 'GI - Grau de Evidência'] = 'GRAU C — SEM EVIDÊNCIA'
+    df_analytical.loc[mask_excluir_incidental, 'GI - Resultado Etapa 1'] = 'EXCLUÍDO'
+    df_analytical.loc[mask_excluir_incidental, 'GI - Divergência Cadastral Aparente'] = False
     
     # -------------------------------------------------------------------------
     # 4. A PENEIRA GROSSA POSITIVA (SINTOMAS DA CAMUFLAGEM)
@@ -109,7 +114,12 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     cond_descarte = df_analytical['Objeto'].str.contains(regex_descarte, case=False, regex=True, na=False)
     
     mask_excluir_descarte = mask_avaliar_descarte & cond_descarte
-    df_analytical.loc[mask_excluir_descarte, 'GI - Resultado Etapa 1'] = 'EXCLUÍDO — SEM EVIDÊNCIA MATERIAL'
+    df_analytical.loc[mask_excluir_descarte, 'GI - Fundamentação Contextual'] = (
+        'Excluído deterministicamente (Descarte Léxico): Objeto singular e fechado incompatível com mercado fluido.'
+    )
+    df_analytical.loc[mask_excluir_descarte, 'GI - Grau de Evidência'] = 'GRAU C — SEM EVIDÊNCIA'
+    df_analytical.loc[mask_excluir_descarte, 'GI - Resultado Etapa 1'] = 'EXCLUÍDO'
+    df_analytical.loc[mask_excluir_descarte, 'GI - Divergência Cadastral Aparente'] = False
     
     # -------------------------------------------------------------------------
     # 6. A PENEIRA FINA (BUSCA VETORIAL / EMBEDDINGS)
@@ -149,7 +159,12 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
             
             # Atualiza flags e status
             is_candidate.loc[indices_aprovados] = True
-            df_analytical.loc[indices_reprovados, 'GI - Resultado Etapa 1'] = 'EXCLUÍDO — SEM EVIDÊNCIA MATERIAL'
+            df_analytical.loc[indices_reprovados, 'GI - Fundamentação Contextual'] = (
+                'Excluído na Peneira Vetorial: Objeto singular sem aderência semântica ao instituto do credenciamento.'
+            )
+            df_analytical.loc[indices_reprovados, 'GI - Grau de Evidência'] = 'GRAU C — SEM EVIDÊNCIA'
+            df_analytical.loc[indices_reprovados, 'GI - Resultado Etapa 1'] = 'EXCLUÍDO'
+            df_analytical.loc[indices_reprovados, 'GI - Divergência Cadastral Aparente'] = False
             
         except Exception as e:
             logging.error(f"Erro na inferência vetorial: {e}. Os residuais não puderam ser vetorizados.")
@@ -159,8 +174,8 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # -------------------------------------------------------------------------
     # 7. ISOLAMENTO DA FILA SEMÂNTICA (ZONA CINZENTA)
     # -------------------------------------------------------------------------
-    df_analytical.loc[is_candidate, 'GI - Resultado Etapa 1'] = 'FILA PARA LLM'
     df_analytical.loc[is_candidate, 'GI - Grau de Evidência'] = 'NA — NÃO AVALIADO (FILA)'
+    df_analytical.loc[is_candidate, 'GI - Resultado Etapa 1'] = 'FILA PARA LLM'
     
     # Extrai o subconjunto isolado para o LLM com as colunas obrigatórias
     colunas_fila = ['Protocolo', 'Modalidade', 'Objeto', 'GI - Regime Jurídico Informado', 'Valor']

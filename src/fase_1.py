@@ -122,10 +122,10 @@ def executar_fase_1(df_ou_caminho: Union[pd.DataFrame, str]) -> Tuple[pd.DataFra
     # 6. TRATAMENTO FINANCEIRO (COLUNA VALOR)
     df_analytical['Valor'] = tratar_valor_financeiro(df_analytical['Valor'])
     
-    # 7. INICIALIZAÇÃO DA ESTRUTURA ANALÍTICA (GI)
-    df_analytical['GI - Resultado Etapa 1'] = 'NÃO CLASSIFICADO'
-    df_analytical['GI - Grau de Evidência'] = pd.NA
+    # 7. INICIALIZAÇÃO DA ESTRUTURA ANALÍTICA (GI) NA ORDEM LÓGICA DE PREENCHIMENTO
     df_analytical['GI - Fundamentação Contextual'] = pd.NA
+    df_analytical['GI - Grau de Evidência'] = pd.NA
+    df_analytical['GI - Resultado Etapa 1'] = 'NÃO CLASSIFICADO'
     df_analytical['GI - Divergência Cadastral Aparente'] = False
     df_analytical['GI - Corroboração Utilizada'] = pd.NA
     df_analytical['GI - Protocolo Relacionado'] = pd.NA

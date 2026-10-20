@@ -9,8 +9,8 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
     """
     Fase 5: Geração do Entregável Executivo.
-    Exporta os dados validados e segmentados para um Excel formatado 
-    pronto para o consumo dos auditores.
+    Exporta os dados validados e segmentados segundo a arquitetura de 3 eixos GI
+    para um Excel formatado pronto para o consumo dos auditores.
     """
     # 1. NOMENCLATURA DO ARQUIVO
     data_atual = datetime.now().strftime("%Y-%m-%d")
@@ -23,30 +23,51 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
     df_bruta = df_raw.copy()
     df_ana['Protocolo'] = df_ana['Protocolo'].astype(str)
     df_bruta['Protocolo'] = df_bruta['Protocolo'].astype(str)
+
+    # Garante a ordenação lógica das colunas GI no entregável
+    colunas_gi_ordenadas = [
+        'GI - Fundamentação Contextual',
+        'GI - Grau de Evidência',
+        'GI - Resultado Etapa 1',
+        'GI - Divergência Cadastral Aparente',
+        'GI - Corroboração Utilizada',
+        'GI - Protocolo Relacionado',
+        'GI - Regime Jurídico Informado'
+    ]
+    colunas_base = [c for c in df_ana.columns if c not in colunas_gi_ordenadas]
+    colunas_gi_presentes = [c for c in colunas_gi_ordenadas if c in df_ana.columns]
+    df_ana = df_ana[colunas_base + colunas_gi_presentes]
     
-    # 2. ROTEAMENTO DE ABAS (SPLIT DO DATAFRAME)
+    # 2. ROTEAMENTO DE ABAS (SPLIT DO DATAFRAME BASEADO NOS 3 EIXOS)
     mask_incluido = df_ana['GI - Resultado Etapa 1'] == 'INCLUÍDO'
+    mask_excluido = df_ana['GI - Resultado Etapa 1'] == 'EXCLUÍDO'
+    mask_val_pendente = df_ana['GI - Resultado Etapa 1'] == 'VALIDAÇÃO PENDENTE'
+
     df_validado = df_ana[mask_incluido].copy()
     
     # 01_Resumo_Executivo
     resumo_dados = {
         'Métrica': [
-            'Total de Linhas Analisadas',
-            'Total de INCLUÍDOS',
+            'Total de Linhas Analisadas (Protocolos Únicos)',
+            'Roteamento: INCLUÍDO',
+            'Roteamento: EXCLUÍDO',
+            'Roteamento: VALIDAÇÃO PENDENTE',
             'Grau A (Evidência Direta)',
             'Grau B (Sintomático)',
-            'Grau C (Texto Vago/Genérico)',
-            'Divergências Cadastrais Apontadas',
-            'Total de EXCLUÍDOS'
+            'Grau C (Sem Evidência)',
+            'Grau D (Texto Vago/Genérico)',
+            'Alertas de Fraude (Divergência Cadastral Aparente = VERDADEIRO)'
         ],
         'Quantidade': [
             len(df_ana),
-            len(df_validado),
-            (df_validado['GI - Grau de Evidência'] == 'GRAU A — EVIDÊNCIA DIRETA').sum(),
-            (df_validado['GI - Grau de Evidência'] == 'GRAU B — SINTOMÁTICO').sum(),
-            (df_validado['GI - Grau de Evidência'] == 'GRAU C — TEXTO VAGO/GENÉRICO').sum(),
-            df_ana['GI - Divergência Cadastral Aparente'].fillna(False).astype(bool).sum(),
-            df_ana['GI - Resultado Etapa 1'].str.contains('EXCLUÍDO', na=False).sum()
+            int(mask_incluido.sum()),
+            int(mask_excluido.sum()),
+            int(mask_val_pendente.sum()),
+            int((df_ana['GI - Grau de Evidência'] == 'GRAU A — EVIDÊNCIA DIRETA').sum()),
+            int((df_ana['GI - Grau de Evidência'] == 'GRAU B — SINTOMÁTICO').sum()),
+            int((df_ana['GI - Grau de Evidência'] == 'GRAU C — SEM EVIDÊNCIA').sum()),
+            int((df_ana['GI - Grau de Evidência'] == 'GRAU D — TEXTO VAGO/GENÉRICO').sum()),
+            int(df_ana['GI - Divergência Cadastral Aparente'].fillna(False).astype(bool).sum())
         ]
     }
     df_resumo = pd.DataFrame(resumo_dados)
@@ -57,12 +78,17 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
     
     df_corroborados = df_ana[df_ana['GI - Corroboração Utilizada'].notna()]
     
-    mask_alerta = (df_ana['GI - Grau de Evidência'] == 'GRAU C — TEXTO VAGO/GENÉRICO') | \
-                  (df_ana['GI - Divergência Cadastral Aparente'] == True)
+    mask_alerta = (
+        mask_val_pendente
+        | (df_ana['GI - Grau de Evidência'] == 'GRAU D — TEXTO VAGO/GENÉRICO')
+        | (df_ana['GI - Divergência Cadastral Aparente'] == True)
+    )
     df_alertas = df_ana[mask_alerta]
     
-    df_exc_mat = df_ana[df_ana['GI - Resultado Etapa 1'] == 'EXCLUÍDO — SEM EVIDÊNCIA MATERIAL']
-    df_exc_inc = df_ana[df_ana['GI - Resultado Etapa 1'] == 'EXCLUÍDO — MENÇÃO INCIDENTAL']
+    # Exclusões (Grau C) separadas entre Materialidade/Singularidade e Menção Incidental
+    mask_mencao_incidental = df_ana['GI - Fundamentação Contextual'].fillna('').str.contains('incidental', case=False)
+    df_exc_mat = df_ana[mask_excluido & (~mask_mencao_incidental)]
+    df_exc_inc = df_ana[mask_excluido & mask_mencao_incidental]
     
     # Recorte da Base Bruta
     protocolos_validados = df_validado['Protocolo'].unique()
@@ -72,10 +98,10 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
     abas = {
         '01_Resumo_Executivo': df_resumo,
         '02_Universo_Validado': df_validado,
-        '03_Grau_A_Evidencia': df_grau_a, # Nome reduzido
+        '03_Grau_A_Evidencia': df_grau_a,
         '04_Grau_B_Sintomatico': df_grau_b,
         '05_Corroborados_Python': df_corroborados,
-        '06_Valid_Pendente_Alertas': df_alertas, # Nome reduzido
+        '06_Valid_Pendente_Alertas': df_alertas,
         '07_Exclusoes_Materialidade': df_exc_mat,
         '08_Falsos_Positivos': df_exc_inc,
         '09_Base_Bruta_Recorte': df_recorte_bruto
@@ -116,7 +142,6 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
                         
                     # Estima tamanho máximo considerando amostra do conteúdo (c-speed) e cabeçalho
                     tamanho_cabecalho = len(str(col_name))
-                    # Pega o maior tamanho (limitado aos 1000 primeiros registros para otimização em bases gigantes)
                     tamanho_dado_max = df_aba[col_name].head(1000).astype(str).map(len).max() 
                     if pd.isna(tamanho_dado_max):
                         tamanho_dado_max = 0
@@ -128,11 +153,10 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
                     else:
                         worksheet.set_column(col_idx, col_idx, tamanho_ideal, fmt_padrao)
                 
-                # Destaque de Fraude (Formatação Condicional) nas abas 02 e 06
-                if nome_aba in ['02_Universo_Validado', '06_Valid_Pendente_Alertas'] and 'GI - Divergência Cadastral Aparente' in df_aba.columns:
+                # Destaque de Fraude (Formatação Condicional) nas abas 02, 06 e 07
+                if nome_aba in ['02_Universo_Validado', '06_Valid_Pendente_Alertas', '07_Exclusoes_Materialidade'] and 'GI - Divergência Cadastral Aparente' in df_aba.columns:
                     col_idx_div = df_aba.columns.get_loc('GI - Divergência Cadastral Aparente')
                     
-                    # Converte índice numérico para letra (ex: 0->A, 25->Z, 26->AA)
                     def col_num_to_letter(n):
                         string = ""
                         while n >= 0:
@@ -142,7 +166,6 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
                         
                     letra_col = col_num_to_letter(col_idx_div)
                     
-                    # Regra condicional baseada na coluna de divergência
                     formula = f'=${letra_col}2=TRUE'
                     worksheet.conditional_format(1, 0, linhas, colunas - 1, {
                         'type': 'formula',

@@ -33,8 +33,8 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Fase 2: Triagem em Cascata (Determinismo e Vetorização).
     Objetivo: Classificar diretamente casos de evidência cabal (vínculo expresso a protocolo
-    de credenciamento no objeto -> INCLUÍDO / GRAU A), descartar ruídos e isolar a zona cinzenta
-    para avaliação posterior do LLM.
+    de credenciamento no objeto e aquisição de gêneros alimentícios da agricultura familiar/PNAE -> INCLUÍDO / GRAU A),
+    descartar ruídos e isolar a zona cinzenta para avaliação posterior do LLM.
     """
     df_analytical = df.copy()
 
@@ -45,12 +45,13 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     
     # Prepara textos para busca combinada (Modalidade + Objeto)
     texto_busca = (df_analytical['Modalidade'].fillna('') + ' ' + df_analytical['Objeto'].fillna('')).astype(str)
+    s_objeto = df_analytical['Objeto'].fillna('').astype(str)
     
     # Cria a flag temporária de candidato para a fila do LLM
     is_candidate = pd.Series(False, index=df_analytical.index)
 
     # -------------------------------------------------------------------------
-    # 1. INCLUSÃO DIRETA (GRAU A): VÍNCULO EXPRESSO A PROTOCOLO DE CREDENCIAMENTO NO OBJETO
+    # 1A. INCLUSÃO DIRETA (GRAU A): VÍNCULO EXPRESSO A PROTOCOLO DE CREDENCIAMENTO NO OBJETO
     # -------------------------------------------------------------------------
     # Grupo 1: Citação completa (ex: "EDITAL DE CREDENCIAMENTO NO 002/2025")
     # Grupo 2: Número do protocolo/processo relacionado (ex: "002/2025", "00009/2025", "001-2026")
@@ -62,7 +63,7 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         r'((?:[A-Z0-9]{2,15}[/-])?\d{1,6}(?:\.\d{1,4})?\s*[/-]\s*(?:20)?\d{2,4}))'
     )
 
-    extracao_vinculo = df_analytical['Objeto'].fillna('').str.extract(regex_vinculo_credenciamento, expand=True)
+    extracao_vinculo = s_objeto.str.extract(regex_vinculo_credenciamento, expand=True)
     citacao_extraida = extracao_vinculo[0]
     protocolo_rel_extraido = extracao_vinculo[1]
     mask_vinculo_grau_a = citacao_extraida.notna()
@@ -97,6 +98,62 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
             f"Filtro Direto Grau A (Vínculo a Protocolo de Credenciamento): {int(mask_vinculo_grau_a.sum())} "
             f"registros classificados diretamente como INCLUÍDO (Divergências: {int(divergencia_vinculo.sum())})."
         )
+
+    # -------------------------------------------------------------------------
+    # 1B. INCLUSÃO DIRETA (GRAU A): AQUISIÇÃO DE GÊNEROS ALIMENTÍCIOS DA AGRICULTURA FAMILIAR (PNAE / PAA)
+    # -------------------------------------------------------------------------
+    # Detecta objetos de aquisição de gêneros alimentícios/merenda escolar vinculados à Agricultura Familiar,
+    # Empreendedor Familiar Rural, Cooperativas/Associações de Produtores Rurais, PNAE ou PAA (Lei 11.947/2009),
+    # excluindo contratações de consultoria/assessoria ou serviços de hora-máquina/trator.
+    regex_alimentos_pnae = (
+        r'GENEROS?\s+ALIMENTICIOS?|ALIMENTOS?|ALIMENTACAO\s+ESCOLAR|MERENDA\s+ESCOLAR|'
+        r'HORTIFRUTI(?:GRANJEIROS?)?|OVOS|FRUTAS|VERDURAS|LEGUMES|PAES|BOLOS|\bPNAE\b|\bPAA\b'
+    )
+    regex_agricultura_familiar = (
+        r'AGRICULTURA\s+FAMILIAR|EMPREENDEDOR(?:ES)?\s+FAMILIAR(?:ES)?(?:\s+RURA(?:L|IS))?|'
+        r'PRODUTOR(?:ES)?\s+RURA(?:L|IS)|AGRICULTOR(?:ES)?\s+FAMILIAR(?:ES)?|'
+        r'COOPERATIVAS?\s+(?:DE\s+|E\s+ASSOCIAC(?:AO|OES)\s+DE\s+)?PRODUTORES\s+RURAIS|'
+        r'ASSOCIAC(?:AO|OES)\s+DE\s+PRODUTORES\s+RURAIS|CHAMADA\s+PUBLICA\s+DE\s+HORTIFRUTI|'
+        r'LEI\s*(?:FEDERAL\s*)?(?:N[O0º°\.]*\s*)?11\.?947'
+    )
+    regex_excecoes_nao_alimentos = (
+        r'CONSULTORIA|ASSESSORIA|APOIO\s+TECNICO|HORA\s+MAQUINA|TRATOR\s+AGRICOLA|ATACADISTA|DISTRIBUIDORA\s+COMERCIAL'
+    )
+
+    mask_ainda_nao_classificado = df_analytical['GI - Resultado Etapa 1'] == 'NÃO CLASSIFICADO'
+    cond_alimentos = s_objeto.str.contains(regex_alimentos_pnae, case=False, regex=True)
+    cond_agri_familiar = s_objeto.str.contains(regex_agricultura_familiar, case=False, regex=True)
+    cond_sem_excecao = ~s_objeto.str.contains(regex_excecoes_nao_alimentos, case=False, regex=True)
+
+    mask_agri_grau_a = mask_ainda_nao_classificado & cond_alimentos & cond_agri_familiar & cond_sem_excecao
+
+    if mask_agri_grau_a.any():
+        modalidade_compativel_agri = df_analytical.loc[mask_agri_grau_a, 'Modalidade'].fillna('').str.contains(
+            r'inexigibilidade|credenciamento|chamamento|chamada\s+publica', case=False, regex=True
+        )
+        divergencia_agri = (~modalidade_compativel_agri).values
+
+        justificativa_agri_regular = (
+            'Incluído deterministicamente (Evidência Direta - Agricultura Familiar/PNAE): '
+            'Aquisição de gêneros alimentícios da agricultura familiar/empreendedor familiar rural (Chamada Pública/Credenciamento).'
+        )
+        justificativa_agri_divergente = (
+            'Incluído deterministicamente (Evidência Direta - Agricultura Familiar/PNAE): '
+            'Aquisição de gêneros alimentícios da agricultura familiar/PNAE sob lógica de Chamada Pública/Credenciamento, '
+            'porém cadastrada em modalidade divergente.'
+        )
+
+        df_analytical.loc[mask_agri_grau_a, 'GI - Fundamentação Contextual'] = np.where(
+            divergencia_agri, justificativa_agri_divergente, justificativa_agri_regular
+        )
+        df_analytical.loc[mask_agri_grau_a, 'GI - Grau de Evidência'] = 'GRAU A — EVIDÊNCIA DIRETA'
+        df_analytical.loc[mask_agri_grau_a, 'GI - Resultado Etapa 1'] = 'INCLUÍDO'
+        df_analytical.loc[mask_agri_grau_a, 'GI - Divergência Cadastral Aparente'] = divergencia_agri
+
+        logging.info(
+            f"Filtro Direto Grau A (Agricultura Familiar / PNAE): {int(mask_agri_grau_a.sum())} "
+            f"registros classificados diretamente como INCLUÍDO (Divergências: {int(divergencia_agri.sum())})."
+        )
     
     # -------------------------------------------------------------------------
     # 2. A ROTA EXPRESSA (CANDIDATOS OBRIGATÓRIOS PARA A FILA DO LLM)
@@ -108,14 +165,14 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # Citações legais referentes a credenciamento (Art. 79 da 14.133 e Art. 25 da 8.666)
     cond_leis = texto_busca.str.contains(r'art[\.\s]+79.*?14\.?133|art[\.\s]+25.*?8\.?666', case=False, regex=True, na=False)
     
-    # Atualiza is_candidate apenas para quem ainda não foi classificado no Passo 1
+    # Atualiza is_candidate apenas para quem ainda não foi classificado nos Passos 1A e 1B
     is_candidate = is_candidate | (mask_nao_classificado & (cond_modalidade | cond_leis))
     
     # -------------------------------------------------------------------------
     # 3. FALSOS POSITIVOS (MENÇÃO INCIDENTAL)
     # -------------------------------------------------------------------------
     regex_incidental = r'rede\s+credenciada|oficinas?\s+credenciadas?|hospital\s+credenciado|credenciad[ao]\s+pelo\s+fabricante'
-    cond_incidental = df_analytical['Objeto'].str.contains(regex_incidental, case=False, regex=True, na=False)
+    cond_incidental = s_objeto.str.contains(regex_incidental, case=False, regex=True, na=False)
     
     # Aplica exclusão apenas se ainda estiver NÃO CLASSIFICADO e não for candidato da Rota Expressa
     mask_excluir_incidental = mask_nao_classificado & cond_incidental & (~is_candidate)
@@ -144,7 +201,7 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         r'festividades?', r'são\s+joão', r'arraial', r'forró', r'festa\s+da\s+padroeira',
         # Serviços Sociais e Transporte
         r'oficineiros?', r'fretamento\s+de\s+veículos?',
-        # Alimentação Direta
+        # Alimentação Direta Residual
         r'agricultura\s+familiar', r'empreendedor\s+familiar', r'pnae', r'alimentação\s+escolar'
     ]
     regex_sintomas = '|'.join(sintomas)
@@ -166,7 +223,7 @@ def executar_fase_2(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     regex_descarte = '|'.join(descartes)
     
     mask_avaliar_descarte = (~is_candidate) & (df_analytical['GI - Resultado Etapa 1'] == 'NÃO CLASSIFICADO')
-    cond_descarte = df_analytical['Objeto'].str.contains(regex_descarte, case=False, regex=True, na=False)
+    cond_descarte = s_objeto.str.contains(regex_descarte, case=False, regex=True, na=False)
     
     mask_excluir_descarte = mask_avaliar_descarte & cond_descarte
     df_analytical.loc[mask_excluir_descarte, 'GI - Fundamentação Contextual'] = (

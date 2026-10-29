@@ -10,7 +10,7 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
     """
     Fase 5: Geração do Entregável Executivo.
     Exporta os dados validados e segmentados segundo a arquitetura de 3 eixos GI
-    para um Excel formatado pronto para o consumo dos auditores.
+    e a Matriz de Triagem R0–R6 (D1–D5 / Q1–Q4) para um Excel formatado.
     """
     # 1. NOMENCLATURA DO ARQUIVO
     data_atual = datetime.now().strftime("%Y-%m-%d")
@@ -24,7 +24,7 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
     df_ana['Protocolo'] = df_ana['Protocolo'].astype(str)
     df_bruta['Protocolo'] = df_bruta['Protocolo'].astype(str)
 
-    # Garante a ordenação lógica das colunas GI no entregável
+    # Garante a ordenação lógica das colunas GI e R0–R6 no entregável
     colunas_gi_ordenadas = [
         'GI - Fundamentação Contextual',
         'GI - Grau de Evidência',
@@ -34,43 +34,101 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
         'GI - Protocolo Relacionado',
         'GI - Regime Jurídico Informado'
     ]
-    colunas_base = [c for c in df_ana.columns if c not in colunas_gi_ordenadas]
+    colunas_r0_r6_ordenadas = []
+    for s in ['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6']:
+        colunas_r0_r6_ordenadas.extend([f'{s}_STATUS', f'{s}_EVIDENCIA', f'{s}_REGRA'])
+    colunas_r0_r6_ordenadas.extend([
+        'D1_ENQUADRAMENTO',
+        'D2_EXECUCAO',
+        'D3_PRECIFICACAO',
+        'D4_DISTRIBUICAO',
+        'D5_RECORRENCIA',
+        'QTD_DIMENSOES',
+        'PRIORIDADE_QUALITATIVA',
+        'NECESSITA_REVISAO_MANUAL',
+        'JUSTIFICATIVA_TRIAGEM'
+    ])
+
+    colunas_especiais = set(colunas_gi_ordenadas + colunas_r0_r6_ordenadas)
+    colunas_base = [c for c in df_ana.columns if c not in colunas_especiais]
     colunas_gi_presentes = [c for c in colunas_gi_ordenadas if c in df_ana.columns]
-    df_ana = df_ana[colunas_base + colunas_gi_presentes]
+    colunas_r_presentes = [c for c in colunas_r0_r6_ordenadas if c in df_ana.columns]
+    df_ana = df_ana[colunas_base + colunas_gi_presentes + colunas_r_presentes]
     
-    # 2. ROTEAMENTO DE ABAS (SPLIT DO DATAFRAME BASEADO NOS 3 EIXOS)
+    # 2. ROTEAMENTO DE ABAS (SPLIT DO DATAFRAME BASEADO NOS 3 EIXOS E MATRIZ R0–R6)
     mask_incluido = df_ana['GI - Resultado Etapa 1'] == 'INCLUÍDO'
     mask_excluido = df_ana['GI - Resultado Etapa 1'] == 'EXCLUÍDO'
     mask_val_pendente = df_ana['GI - Resultado Etapa 1'] == 'VALIDAÇÃO PENDENTE'
 
     df_validado = df_ana[mask_incluido].copy()
     
-    # 01_Resumo_Executivo
-    resumo_dados = {
-        'Métrica': [
-            'Total de Linhas Analisadas (Protocolos Únicos)',
-            'Roteamento: INCLUÍDO',
-            'Roteamento: EXCLUÍDO',
-            'Roteamento: VALIDAÇÃO PENDENTE',
-            'Grau A (Evidência Direta)',
-            'Grau B (Sintomático)',
-            'Grau C (Sem Evidência)',
-            'Grau D (Texto Vago/Genérico)',
-            'Alertas de Fraude (Divergência Cadastral Aparente = VERDADEIRO)'
-        ],
-        'Quantidade': [
-            len(df_ana),
-            int(mask_incluido.sum()),
-            int(mask_excluido.sum()),
-            int(mask_val_pendente.sum()),
-            int((df_ana['GI - Grau de Evidência'] == 'GRAU A — EVIDÊNCIA DIRETA').sum()),
-            int((df_ana['GI - Grau de Evidência'] == 'GRAU B — SINTOMÁTICO').sum()),
-            int((df_ana['GI - Grau de Evidência'] == 'GRAU C — SEM EVIDÊNCIA').sum()),
-            int((df_ana['GI - Grau de Evidência'] == 'GRAU D — TEXTO VAGO/GENÉRICO').sum()),
-            int(df_ana['GI - Divergência Cadastral Aparente'].fillna(False).astype(bool).sum())
-        ]
-    }
-    df_resumo = pd.DataFrame(resumo_dados)
+    # 01_Resumo_Executivo (Métricas GI + Métricas do Motor de Triagem R0–R6)
+    metricas = [
+        'Total de Linhas Analisadas (Protocolos Únicos)',
+        'Roteamento: INCLUÍDO',
+        'Roteamento: EXCLUÍDO',
+        'Roteamento: VALIDAÇÃO PENDENTE',
+        'Grau A (Evidência Direta)',
+        'Grau B (Sintomático)',
+        'Grau C (Sem Evidência)',
+        'Grau D (Texto Vago/Genérico)',
+        'Alertas de Fraude (Divergência Cadastral Aparente = VERDADEIRO)'
+    ]
+    quantidades = [
+        len(df_ana),
+        int(mask_incluido.sum()),
+        int(mask_excluido.sum()),
+        int(mask_val_pendente.sum()),
+        int((df_ana['GI - Grau de Evidência'] == 'GRAU A — EVIDÊNCIA DIRETA').sum()),
+        int((df_ana['GI - Grau de Evidência'] == 'GRAU B — SINTOMÁTICO').sum()),
+        int((df_ana['GI - Grau de Evidência'] == 'GRAU C — SEM EVIDÊNCIA').sum()),
+        int((df_ana['GI - Grau de Evidência'] == 'GRAU D — TEXTO VAGO/GENÉRICO').sum()),
+        int(df_ana['GI - Divergência Cadastral Aparente'].fillna(False).astype(bool).sum())
+    ]
+
+    if 'PRIORIDADE_QUALITATIVA' in df_ana.columns:
+        metricas.extend([
+            'Prioridade Qualitativa: Q1 — Muito alta',
+            'Prioridade Qualitativa: Q2 — Alta',
+            'Prioridade Qualitativa: Q3 — Média',
+            'Prioridade Qualitativa: Q4 — Monitoramento',
+            'Processos com Necessidade de Revisão Manual',
+            'Dimensão D1 — Enquadramento / Cabimento',
+            'Dimensão D2 — Execução (Força de Trabalho ou Obra/Engenharia)',
+            'Dimensão D3 — Precificação / Mercado Fluido',
+            'Dimensão D4 — Distribuição da Demanda Confirmada',
+            'Dimensão D5 — Recorrência / Execução Continuada',
+            'Sinal R0 Confirmado (Divergência de Enquadramento)',
+            'Sinal R1 Confirmado (Força de Trabalho Operacional)',
+            'Sinal R2 Confirmado (Obras / Engenharia / Manutenção Predial)',
+            'Sinal R3 Confirmado (Mercado Fluido / Preço Variável)',
+            'Sinal R4 Confirmado (Critério Objetivo de Distribuição)',
+            'Sinal R4 Pendente Documental (Critério Omitido no Objeto)',
+            'Sinal R5 Confirmado (Execução Continuada / Sob Demanda)',
+            'Sinal R6 Revisar/Confirmado (Regime Especial / Cabimento)'
+        ])
+        quantidades.extend([
+            int((df_ana['PRIORIDADE_QUALITATIVA'] == 'Q1 — Muito alta').sum()),
+            int((df_ana['PRIORIDADE_QUALITATIVA'] == 'Q2 — Alta').sum()),
+            int((df_ana['PRIORIDADE_QUALITATIVA'] == 'Q3 — Média').sum()),
+            int((df_ana['PRIORIDADE_QUALITATIVA'] == 'Q4 — Monitoramento').sum()),
+            int(df_ana['NECESSITA_REVISAO_MANUAL'].fillna(False).astype(bool).sum()),
+            int(df_ana['D1_ENQUADRAMENTO'].fillna(False).astype(bool).sum()),
+            int(df_ana['D2_EXECUCAO'].fillna(False).astype(bool).sum()),
+            int(df_ana['D3_PRECIFICACAO'].fillna(False).astype(bool).sum()),
+            int(df_ana['D4_DISTRIBUICAO'].fillna(False).astype(bool).sum()),
+            int(df_ana['D5_RECORRENCIA'].fillna(False).astype(bool).sum()),
+            int((df_ana['R0_STATUS'] == 'CONFIRMADO').sum()),
+            int((df_ana['R1_STATUS'] == 'CONFIRMADO').sum()),
+            int((df_ana['R2_STATUS'] == 'CONFIRMADO').sum()),
+            int((df_ana['R3_STATUS'] == 'CONFIRMADO').sum()),
+            int((df_ana['R4_STATUS'] == 'CONFIRMADO').sum()),
+            int((df_ana['R4_STATUS'] == 'PENDENTE DOCUMENTAL').sum()),
+            int((df_ana['R5_STATUS'] == 'CONFIRMADO').sum()),
+            int(df_ana['R6_STATUS'].isin(['CONFIRMADO', 'REVISAR']).sum())
+        ])
+
+    df_resumo = pd.DataFrame({'Métrica': metricas, 'Quantidade': quantidades})
     
     # Sub-filtros para as abas
     df_grau_a = df_validado[df_validado['GI - Grau de Evidência'] == 'GRAU A — EVIDÊNCIA DIRETA']
@@ -93,6 +151,28 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
     # Recorte da Base Bruta
     protocolos_validados = df_validado['Protocolo'].unique()
     df_recorte_bruto = df_bruta[df_bruta['Protocolo'].isin(protocolos_validados)]
+
+    # 10_Matriz_Triagem_R0_R6 (Seção 9 da Especificação Funcional)
+    colunas_matriz_secao_9 = [
+        'Protocolo', 'No.Licitação', 'Jurisdicionado', 'Município', 'Modalidade',
+        'Tipo do Objeto', 'Objeto', 'Valor', 'Qtd_Linhas_Origem',
+        'GI - Resultado Etapa 1', 'GI - Grau de Evidência', 'GI - Divergência Cadastral Aparente',
+        'GI - Regime Jurídico Informado'
+    ] + colunas_r0_r6_ordenadas
+    colunas_matriz_presentes = [c for c in colunas_matriz_secao_9 if c in df_ana.columns]
+
+    # Filtra registros do universo relevante (INCLUÍDO, VALIDAÇÃO PENDENTE ou qualquer sinal ativo Q1–Q3)
+    mask_relevante_matriz = (
+        mask_incluido
+        | mask_val_pendente
+        | (df_ana.get('PRIORIDADE_QUALITATIVA', pd.Series('Q4 — Monitoramento', index=df_ana.index)) != 'Q4 — Monitoramento')
+    )
+    df_matriz_r0_r6 = df_ana.loc[mask_relevante_matriz, colunas_matriz_presentes].copy()
+    if 'PRIORIDADE_QUALITATIVA' in df_matriz_r0_r6.columns and 'QTD_DIMENSOES' in df_matriz_r0_r6.columns:
+        df_matriz_r0_r6 = df_matriz_r0_r6.sort_values(
+            by=['PRIORIDADE_QUALITATIVA', 'QTD_DIMENSOES'],
+            ascending=[True, False]
+        )
     
     # Mapeamento do nome da aba (máx 31 caracteres no Excel) para o respectivo df
     abas = {
@@ -104,7 +184,8 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
         '06_Valid_Pendente_Alertas': df_alertas,
         '07_Exclusoes_Materialidade': df_exc_mat,
         '08_Falsos_Positivos': df_exc_inc,
-        '09_Base_Bruta_Recorte': df_recorte_bruto
+        '09_Base_Bruta_Recorte': df_recorte_bruto,
+        '10_Matriz_Triagem_R0_R6': df_matriz_r0_r6
     }
     
     # 3. REGRAS DE QUALIDADE E FORMATAÇÃO
@@ -154,8 +235,8 @@ def executar_fase_5(df_analytical: pd.DataFrame, df_raw: pd.DataFrame) -> str:
                     else:
                         worksheet.set_column(col_idx, col_idx, tamanho_ideal, fmt_padrao)
                 
-                # Destaque de Fraude (Formatação Condicional) nas abas 02, 06 e 07
-                if nome_aba in ['02_Universo_Validado', '06_Valid_Pendente_Alertas', '07_Exclusoes_Materialidade'] and 'GI - Divergência Cadastral Aparente' in df_aba.columns:
+                # Destaque de Fraude (Formatação Condicional) nas abas 02, 06, 07 e 10
+                if nome_aba in ['02_Universo_Validado', '06_Valid_Pendente_Alertas', '07_Exclusoes_Materialidade', '10_Matriz_Triagem_R0_R6'] and 'GI - Divergência Cadastral Aparente' in df_aba.columns:
                     col_idx_div = df_aba.columns.get_loc('GI - Divergência Cadastral Aparente')
                     
                     def col_num_to_letter(n):

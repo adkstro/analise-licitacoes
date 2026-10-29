@@ -23,7 +23,9 @@ def mapear_colunas_essenciais(df: pd.DataFrame) -> pd.DataFrame:
         'Objeto': ['objeto', 'descricao', 'descrição', 'descricao do objeto', 'descrição do objeto'],
         'Município': ['municipio', 'município', 'cidade'],
         'Jurisdicionado': ['jurisdicionado', 'orgao', 'órgão', 'unidade gestora', 'ente'],
-        'Valor': ['valor', 'valor contratado', 'valor da licitacao', 'valor licitação', 'valor da licitação', 'valor global']
+        'Valor': ['valor', 'valor contratado', 'valor da licitacao', 'valor licitação', 'valor da licitação', 'valor global'],
+        'Tipo do Objeto': ['tipo do objeto', 'tipo de objeto', 'natureza do objeto', 'categoria do objeto'],
+        'No.Licitação': ['no.licitacao', 'no.licitação', 'numero da licitacao', 'número da licitação', 'nº licitação', 'num licitacao']
     }
     
     colunas_originais = df.columns
@@ -40,7 +42,8 @@ def mapear_colunas_essenciais(df: pd.DataFrame) -> pd.DataFrame:
         if match:
             renames[match[0]] = alvo
         else:
-            logging.warning(f"Coluna essencial '{alvo}' não localizada através dos sinônimos.")
+            if alvo in ('Modalidade', 'Objeto', 'Município', 'Jurisdicionado', 'Valor'):
+                logging.warning(f"Coluna essencial '{alvo}' não localizada através dos sinônimos.")
             df[alvo] = pd.NA
             
     if renames:
@@ -73,8 +76,6 @@ def tratar_valor_financeiro(serie: pd.Series) -> pd.Series:
     s = s.str.replace(r'[^\d\.,\-]', '', regex=True)
     
     # Lida com o padrão brasileiro (ex: 1.234.567,89)
-    # Primeiro, remove os pontos que atuam como separador de milhar (ponto seguido por 3 dígitos e possivelmente vírgula)
-    # Uma forma mais direta para o padrão BR é remover os pontos e trocar a vírgula por ponto
     tem_virgula = s.str.contains(',', na=False)
     
     s = np.where(
@@ -104,9 +105,10 @@ def executar_fase_1(df_ou_caminho: Union[pd.DataFrame, str]) -> Tuple[pd.DataFra
     qtde_protocolos_unicos = df_raw['Protocolo'].nunique()
     logging.info(f"Registros iniciais: {qtde_inicial} | Protocolos únicos: {qtde_protocolos_unicos}")
     
-    # 3. CONSOLIDAÇÃO DA BASE ANALÍTICA
-    # Agrupa por Protocolo e adota o primeiro valor não-nulo encontrado para cada coluna
+    # 3. CONSOLIDAÇÃO DA BASE ANALÍTICA E CONTAGEM DE LINHAS DE ORIGEM (UNIDADE DE ANÁLISE)
+    contagem_linhas = df_raw.groupby('Protocolo').size()
     df_analytical = df_raw.groupby('Protocolo', as_index=False).first()
+    df_analytical['Qtd_Linhas_Origem'] = df_analytical['Protocolo'].map(contagem_linhas).fillna(1).astype(int)
     
     # Teste de qualidade: a base analítica deve ter uma linha por protocolo
     assert len(df_analytical) == df_analytical['Protocolo'].nunique(), "Falha na consolidação: Protocolos duplicados persistiram."
@@ -115,9 +117,10 @@ def executar_fase_1(df_ou_caminho: Union[pd.DataFrame, str]) -> Tuple[pd.DataFra
     df_analytical = mapear_colunas_essenciais(df_analytical)
     
     # 5. PADRONIZAÇÃO TEXTUAL VETORIZADA
-    colunas_texto = ['Objeto', 'Modalidade', 'Município', 'Jurisdicionado']
+    colunas_texto = ['Objeto', 'Modalidade', 'Município', 'Jurisdicionado', 'Tipo do Objeto']
     for col in colunas_texto:
-        df_analytical[col] = padronizar_textos(df_analytical[col])
+        if col in df_analytical.columns:
+            df_analytical[col] = padronizar_textos(df_analytical[col])
         
     # 6. TRATAMENTO FINANCEIRO (COLUNA VALOR)
     df_analytical['Valor'] = tratar_valor_financeiro(df_analytical['Valor'])
@@ -132,7 +135,6 @@ def executar_fase_1(df_ou_caminho: Union[pd.DataFrame, str]) -> Tuple[pd.DataFra
     df_analytical['GI - Protocolo Relacionado'] = pd.Series(pd.NA, index=df_analytical.index, dtype='object')
     
     # 8. ENRIQUECIMENTO: REGIME JURÍDICO INFORMADO
-    # Cria uma string concatenada limpa para busca com regex
     texto_busca = df_analytical['Modalidade'].fillna('') + ' ' + df_analytical['Objeto'].fillna('')
     
     cond_14133 = texto_busca.str.contains(r'14\.?133', case=False, regex=True)
@@ -156,8 +158,24 @@ def executar_fase_1(df_ou_caminho: Union[pd.DataFrame, str]) -> Tuple[pd.DataFra
             )
         )
     )
+
+    # 9. INICIALIZAÇÃO DO MOTOR DE TRIAGEM DE RISCOS E CARACTERÍSTICAS (R0 A R6 / D1 A D5 / Q1 A Q4)
+    for sinal in ['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6']:
+        df_analytical[f'{sinal}_STATUS'] = pd.Series('NÃO IDENTIFICADO', index=df_analytical.index, dtype='object')
+        df_analytical[f'{sinal}_EVIDENCIA'] = pd.Series(pd.NA, index=df_analytical.index, dtype='object')
+        df_analytical[f'{sinal}_REGRA'] = pd.Series(pd.NA, index=df_analytical.index, dtype='object')
+
+    df_analytical['D1_ENQUADRAMENTO'] = False
+    df_analytical['D2_EXECUCAO'] = False
+    df_analytical['D3_PRECIFICACAO'] = False
+    df_analytical['D4_DISTRIBUICAO'] = False
+    df_analytical['D5_RECORRENCIA'] = False
+    df_analytical['QTD_DIMENSOES'] = 0
+    df_analytical['PRIORIDADE_QUALITATIVA'] = pd.Series('Q4 — Monitoramento', index=df_analytical.index, dtype='object')
+    df_analytical['NECESSITA_REVISAO_MANUAL'] = False
+    df_analytical['JUSTIFICATIVA_TRIAGEM'] = pd.Series(pd.NA, index=df_analytical.index, dtype='object')
     
-    # 9. ASSERÇÕES E TESTES DE QUALIDADE (UNIT TESTS)
+    # 10. ASSERÇÕES E TESTES DE QUALIDADE (UNIT TESTS)
     # V1: Garante unicidade da chave primária
     assert df_analytical['Protocolo'].duplicated().sum() == 0, "Erro: A coluna Protocolo possui chaves duplicadas."
     

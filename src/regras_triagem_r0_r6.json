@@ -1,0 +1,127 @@
+{
+  "versao": "1.0.0",
+  "descricao": "Tabela parametrizável de regras para o Motor de Triagem R0 a R6 (Camada 1 e Exceções Contextuais)",
+  "regras": [
+    {
+      "sinal": "R0",
+      "regra_id": "R0_001",
+      "nome": "Pré-qualificação cadastrada como Credenciamento",
+      "padrao_regex": "PRE[\\s\\-]?QUALIFICAC[AÃ]O",
+      "excecao_regex": null,
+      "condicao_modalidade": "CREDENCIAMENTO",
+      "status_camada_1": "CONFIRMADO",
+      "descricao_regra": "Modalidade cadastrada como Credenciamento, mas o Objeto descreve procedimento de pré-qualificação",
+      "ativo": true
+    },
+    {
+      "sinal": "R0",
+      "regra_id": "R0_002",
+      "nome": "Inexigibilidade com menção a credenciamento sem número originário",
+      "padrao_regex": "CREDENCIAMENTO|CREDENCIAD[AO]S?",
+      "excecao_regex": "REDE\\s+CREDENCIADA|OFICINAS?\\s+CREDENCIADAS?|CREDENCIAD[AO]\\s+PELO\\s+FABRICANTE",
+      "condicao_modalidade": "INEXIGIBILIDADE",
+      "status_camada_1": "CONFIRMADO",
+      "descricao_regra": "Contratação por inexigibilidade menciona credenciamento sem individualizar o número do procedimento originário",
+      "ativo": true
+    },
+    {
+      "sinal": "R0",
+      "regra_id": "R0_003",
+      "nome": "Evidência material de credenciamento em modalidade diversa",
+      "padrao_regex": "CREDENCIAMENTO|CHAMAMENTO\\s+PUBLICO|TABELA\\s+(?:DO\\s+)?SUS|SISTEMA\\s+DE\\s+RODIZIO",
+      "excecao_regex": "REDE\\s+CREDENCIADA|OFICINAS?\\s+CREDENCIADAS?|HOSPITAL\\s+CREDENCIADO|CREDENCIAD[AO]\\s+PELO\\s+FABRICANTE",
+      "condicao_modalidade": "DIFERENTE_DE_CREDENCIAMENTO",
+      "status_camada_1": "CONFIRMADO",
+      "descricao_regra": "Modalidade diferente de Credenciamento com evidência material de credenciamento no Objeto",
+      "ativo": true
+    },
+    {
+      "sinal": "R0",
+      "regra_id": "R0_004",
+      "nome": "Regime jurídico defasado (Lei 8.666/1993 ou Lei 10.520/2002)",
+      "padrao_regex": "8\\.?666|10\\.?520",
+      "excecao_regex": null,
+      "condicao_modalidade": "QUALQUER",
+      "status_camada_1": "REVISAR",
+      "descricao_regra": "Regime jurídico informado refere-se a legislação revogada (diferente da Lei nº 14.133/2021)",
+      "ativo": true
+    },
+    {
+      "sinal": "R1",
+      "regra_id": "R1_001",
+      "nome": "Contratação de funções operacionais / força de trabalho",
+      "padrao_regex": "\\b(?:MOTORISTAS?|PEDREIROS?|SERVENTES?|PINTOR(?:ES)?|JARDINEIROS?|OPERADOR(?:ES)?(?:\\s+DE\\s+MAQUINAS?)?|SERVICOS\\s+GERAIS|AUXILIAR(?:ES)?\\s+DE\\s+SERVICOS\\s+GERAIS|MERENDEIRAS?|PORTEIROS?|VIGIAS?|ZELADOR(?:ES)?|COVEIROS?|GARIS|RECEPCIONISTAS?|ELETRICISTAS?|ENCANADOR(?:ES)?|CARPINTEIROS?)\\b",
+      "excecao_regex": "(?:LOCAC[AÃ]O|FRETAMENTO|HORAS?[\\s/\\-]+MAQUINAS?|CAMINH[OÕ]ES|VEICULOS?|RETROESCAVADEIRA|TRATOR|MOTONIVELADORA|TRANSPORTE).*?(?:COM\\s+MOTORISTA|COM\\s+OPERADOR|MOTORISTA[/\\s]OPERADOR)|(?:COM\\s+MOTORISTA|COM\\s+OPERADOR).*?(?:CONTA\\s+DA\\s+CONTRATADA|INCLUS[AO])|PLANT[OÕ]ES\\s+MEDICOS|CONSULTAS\\s+MEDICAS|FORNECIMENTO\\s+DE\\s+REFEIC[OÕ]ES|BUFFET|EXECUC[AÃ]O\\s+DE\\s+OBRA|CONSTRUC[AÃ]O\\s+DE\\s+(?:UNIDADES|ESCOLA|PRACA|UBS)",
+      "condicao_modalidade": "QUALQUER",
+      "status_camada_1": "CANDIDATO",
+      "descricao_regra": "Função operacional identificada como possível objeto principal da contratação (substituição de pessoal)",
+      "ativo": true
+    },
+    {
+      "sinal": "R2",
+      "regra_id": "R2_001",
+      "nome": "Contratação de obras, engenharia ou manutenção civil",
+      "padrao_regex": "\\b(?:CONSTRUC[AÃ]O\\s+CIVIL|CONSTRUC[AÃ]O\\s+DE|REFORMA\\s+(?:DE|PREDIAL|GERAL)|PAVIMENTAC[AÃ]O|ASFALTO|MANUTENC[AÃ]O\\s+PREDIAL|MANUTENC[AÃ]O\\s+DE\\s+PREDIOS\\s+PUBLICOS|CONSERVAC[AÃ]O\\s+CIVIL|EXECUC[AÃ]O\\s+DE\\s+OBRAS?|SERVICOS\\s+DE\\s+ENGENHARIA|TERRAPLANAGEM|DRENAGEM\\s+PLUVIAL)\\b",
+      "excecao_regex": "AQUISIC[AÃ]O\\s+(?:DE\\s+)?MATERIA(?:L|IS)\\s+DE\\s+CONSTRUC[AÃ]O|PRE[\\s\\-]?QUALIFICAC[AÃ]O|LOCAC[AÃ]O\\s+DE\\s+(?:EQUIPAMENTOS?|MAQUINAS?|VEICULOS?)|HORAS?[\\s/\\-]+MAQUINAS?|ELABORAC[AÃ]O\\s+DE\\s+PROJETOS?\\s+DE\\s+ENGENHARIA|ASSESSORIA\\s+EM\\s+ENGENHARIA",
+      "condicao_modalidade": "QUALQUER",
+      "status_camada_1": "CANDIDATO",
+      "descricao_regra": "Núcleo do objeto relacionado a execução de obra, engenharia ou manutenção civil",
+      "ativo": true
+    },
+    {
+      "sinal": "R3",
+      "regra_id": "R3_001",
+      "nome": "Mecanismo explícito de mercado fluido / precificação variável",
+      "padrao_regex": "\\b(?:MERCADO\\s+FLUIDO|PRECOS?\\s+VARIAVE(?:L|IS)|COTAC[AÃ]O\\s+PERIODICA|ATUALIZAC[AÃ]O\\s+DE\\s+PRECOS?|TABELA\\s+DINAMICA|DESCONTO\\s+SOBRE\\s+(?:A\\s+)?TABELA|MAIOR\\s+PERCENTUAL\\s+DE\\s+DESCONTO\\s+SOBRE\\s+TABELA|TABELA\\s+ABC\\s*FARMA|TABELA\\s+CMED|TABELA\\s+ANP|TABELA\\s+SINAPI)\\b",
+      "excecao_regex": null,
+      "condicao_modalidade": "QUALQUER",
+      "status_camada_1": "CONFIRMADO",
+      "descricao_regra": "Mecanismo de precificação variável ou índice/tabela dinâmica explicitamente mencionado no objeto",
+      "ativo": true
+    },
+    {
+      "sinal": "R3",
+      "regra_id": "R3_002",
+      "nome": "Referência genérica a preço vigente ou tabela sem dinâmica detalhada",
+      "padrao_regex": "\\b(?:PRECO\\s+VIGENTE|PRECOS?\\s+DE\\s+MERCADO|CONFORME\\s+TABELA\\s+VIGENTE|INDICE\\s+DE\\s+ATUALIZAC[AÃ]O)\\b",
+      "excecao_regex": "TABELA\\s+(?:DO\\s+)?SUS|TABELA\\s+FIXA",
+      "condicao_modalidade": "QUALQUER",
+      "status_camada_1": "PENDENTE DOCUMENTAL",
+      "descricao_regra": "Há referência a tabela ou preço vigente, mas a dinâmica de atualização não é suficientemente compreensível no objeto",
+      "ativo": true
+    },
+    {
+      "sinal": "R4",
+      "regra_id": "R4_001",
+      "nome": "Critério objetivo de distribuição da demanda explícito",
+      "padrao_regex": "\\b(?:SISTEMA\\s+DE\\s+RODIZIO|RODIZIO\\s+(?:PERIODICO|ENTRE|DE)|ORDEM\\s+DE\\s+CONVOCAC[AÃ]O|DISTRIBUIC[AÃ]O\\s+(?:ADMINISTRATIVA|EQUITATIVA|IGUALITARIA)|SORTEIO\\s+(?:PUBLICO|ENTRE)|ESCALA\\s+DE\\s+(?:RODIZIO|ATENDIMENTO|REVEZAMENTO)|SISTEMA\\s+DE\\s+ALTERNANCIA|CRITERIO\\s+DE\\s+ALOCAC[AÃ]O\\s+DA\\s+DEMANDA)\\b",
+      "excecao_regex": null,
+      "condicao_modalidade": "QUALQUER",
+      "status_camada_1": "CONFIRMADO",
+      "descricao_regra": "Evidência explícita de rodízio, sorteio, escala ou critério objetivo de alocação da demanda entre credenciados",
+      "ativo": true
+    },
+    {
+      "sinal": "R5",
+      "regra_id": "R5_001",
+      "nome": "Execução continuada ou acionamento sob demanda",
+      "padrao_regex": "\\b(?:CONFORME\\s+(?:A\\s+)?DEMANDA|QUANDO\\s+HOUVER\\s+DEMANDA|SOB\\s+DEMANDA|QUANDO\\s+NECESSARIO|CONFORME\\s+(?:A\\s+)?NECESSIDADE|EVENTUAL\\s+CONTRATAC[AÃ]O|FUTURA\\s+E\\s+EVENTUAL|DURANTE\\s+12\\s*\\(?DOZE\\)?\\s*MESES|PELO\\s+PERIODO\\s+DE\\s+12\\s*\\(?DOZE\\)?\\s*MESES|PRESTAC[AÃ]O\\s+CONTINUADA|SERVICOS\\s+CONTINUOS|EXECUC[AÃ]O\\s+PERIODICA|SUCESSIVAMENTE|DURANTE\\s+A\\s+VIGENCIA|PARCELADAMENTE)\\b",
+      "excecao_regex": "\\b(?:EVENTO\\s+UNICO|AQUISIC[AÃ]O\\s+PONTUAL|OBRA\\s+UNICA|ENTREGA\\s+IMEDIATA\\s+E\\s+INTEGRAL|APRESENTAC[AÃ]O\\s+UNICA|SHOW\\s+ARTISTICO\\s+DA\\s+(?:BANDA|DUPLA|CANTOR))\\b",
+      "condicao_modalidade": "QUALQUER",
+      "status_camada_1": "CONFIRMADO",
+      "descricao_regra": "Objeto apresenta expressões de execução continuada ou acionamento recorrente sob demanda",
+      "ativo": true
+    },
+    {
+      "sinal": "R6",
+      "regra_id": "R6_001",
+      "nome": "Regime jurídico especial (Lei 13.303/2016 ou Lei 13.019/2014) ou Pré-qualificação",
+      "padrao_regex": "\\b(?:13\\.?303|13\\.?019|ORGANIZAC[OÕ]ES\\s+DA\\s+SOCIEDADE\\s+CIVIL|\\bOSCS?\\b|PRE[\\s\\-]?QUALIFICAC[AÃ]O|PERMISS[AÃ]O\\s+DE\\s+USO|CESS[AÃ]O\\s+DE\\s+USO\\s+DE\\s+BOX|LEILOEIROS?\\s+OFICIA(?:L|IS)|INSTITUIC[OÕ]ES\\s+FINANCEIRAS?.*?(?:CONSIGNADO|CREDITO))\\b",
+      "excecao_regex": null,
+      "condicao_modalidade": "QUALQUER",
+      "status_camada_1": "REVISAR",
+      "descricao_regra": "Procedimento submetido a regime especial (Lei 13.303/16, Lei 13.019/14, pré-qualificação ou objeto atípico) que requer validação de cabimento",
+      "ativo": true
+    }
+  ]
+}

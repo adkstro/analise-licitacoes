@@ -51,6 +51,14 @@ class AnaliseCredenciamento(BaseModel):
         ...,
         description="4. GI - Divergência Cadastral Aparente: True quando o resultado_etapa_1 contradiz a modalidade cadastrada (ex: INCLUÍDO mas modalidade é Pregão; ou EXCLUÍDO mas modalidade é Credenciamento/Inexigibilidade). False quando concorda ou quando resultado_etapa_1 é VALIDAÇÃO PENDENTE (Grau D)."
     )
+    r1_mao_de_obra_operacional: bool = Field(
+        default=False,
+        description="5. Camada 2 (Sinal R1): True APENAS se o objeto principal da contratação for fornecimento de força de trabalho operacional/substituição de pessoal (ex: motorista, pedreiro, servente, serviços gerais, vigia, porteiro, merendeira, coveiro). False se o termo for apenas acessório (ex: locação de máquinas/veículos com motorista/operador, transporte de passageiros, plantões médicos, fornecimento de refeições)."
+    )
+    r2_obra_engenharia_manutencao: bool = Field(
+        default=False,
+        description="6. Camada 2 (Sinal R2): True APENAS se o núcleo material do objeto for execução de obras civis, serviços de engenharia, reforma, pavimentação ou manutenção predial/civil. False se for aquisição de materiais de construção, locação de máquinas/equipamentos, elaboração de projeto técnico/consultoria ou pré-qualificação."
+    )
 
 # 2. O SYSTEM PROMPT (MANUAL DO AUDITOR DE CONTROLE EXTERNO)
 SYSTEM_PROMPT = """Você é um Auditor Sênior de Controle Externo de um Tribunal de Contas no Brasil, especialista em licitações (Lei 14.133/21 e Lei 8.666/93). Sua missão é analisar textos de contratações públicas para identificar a presença material do instituto do 'Credenciamento' e da 'Inexigibilidade', avaliando sua regularidade ou eventual fraude/divergência cadastral.
@@ -77,7 +85,7 @@ A aquisição de gêneros alimentícios da agricultura familiar e do empreendedo
     - Falso Credenciamento na Agricultura: Se a Modalidade for 'Credenciamento', mas o objeto indicar compra fechada/exclusiva com empresa atacadista/distribuidora comercial tradicional (que NÃO seja agricultor familiar ou cooperativa rural), classifique como GRAU C — SEM EVIDÊNCIA, resultado_etapa_1 = 'EXCLUÍDO' e divergencia_cadastral = True.
 
 =====================================================================
-ARQUITETURA DE DECISÃO EM 3 EIXOS (PREENCHA NESTA EXATA ORDEM LÓGICA):
+ARQUITETURA DE DECISÃO EM 3 EIXOS + VALIDAÇÃO CONTEXTUAL (R1 E R2):
 =====================================================================
 
 PASSO 1 — Fundamentação Contextual (justificativa_sintetica):
@@ -99,7 +107,11 @@ Derive matematicamente do Grau de Evidência atribuído no Passo 2:
 PASSO 4 — O Alerta de Fraude (divergencia_cadastral):
 Responda: O cadastro (Modalidade) contradiz a realidade material (resultado_etapa_1)?
 - True (VERDADEIRO): Quando o resultado da etapa 1 contradiz a modalidade cadastrada (ex: resultado INCLUÍDO — o objeto reflete o conceito material de inexigibilidade/credenciamento — mas a modalidade cadastrada é Pregão/Concorrência/Dispensa comum; ou resultado EXCLUÍDO — objeto singular/fechado Grau C — mas a modalidade cadastrada é Credenciamento/Inexigibilidade).
-- False (FALSO - default): Quando o resultado da etapa 1 concorda com a modalidade cadastrada (ex: resultado EXCLUÍDO e a modalidade cadastrada é qualquer uma exceto inexigibilidade ou credenciamento; ou resultado INCLUÍDO e a modalidade é inexigibilidade ou credenciamento) OU quando o resultado da etapa 1 é VALIDAÇÃO PENDENTE (Grau D)."""
+- False (FALSO - default): Quando o resultado da etapa 1 concorda com a modalidade cadastrada OU quando o resultado da etapa 1 é VALIDAÇÃO PENDENTE (Grau D).
+
+PASSO 5 — Validação Contextual Camada 2 (r1_mao_de_obra_operacional e r2_obra_engenharia_manutencao):
+- r1_mao_de_obra_operacional: Marque True SOMENTE se o objeto principal for a contratação de força de trabalho operacional / funções rotineiras (ex: motorista, pedreiro, servente, pintor, jardineiro, operador, serviços gerais, merendeira, porteiro, vigia, zelador, coveiro, eletricista, encanador). Marque False se o termo aparecer apenas como acessório (ex: locação de máquinas/caminhões com operador/motorista por conta da contratada, fretamento/transporte escolar ou de pacientes, plantões médicos, fornecimento de refeições).
+- r2_obra_engenharia_manutencao: Marque True SOMENTE se o núcleo do objeto for execução de obras civis, serviços de engenharia, reforma, pavimentação ou manutenção predial/civil. Marque False se for aquisição isolada de material de construção, locação de máquinas/equipamentos, consultoria/projeto intelectual ou pré-qualificação."""
 
 
 def _formatar_tempo(segundos: float) -> str:
@@ -335,7 +347,9 @@ async def inferir_registro(
                 'GI - Fundamentação Contextual': analise.justificativa_sintetica,
                 'GI - Grau de Evidência': grau_final,
                 'GI - Resultado Etapa 1': resultado_final,
-                'GI - Divergência Cadastral Aparente': divergencia_final
+                'GI - Divergência Cadastral Aparente': divergencia_final,
+                'R1_CONFIRMADO_LLM': bool(getattr(analise, 'r1_mao_de_obra_operacional', False)),
+                'R2_CONFIRMADO_LLM': bool(getattr(analise, 'r2_obra_engenharia_manutencao', False))
             }
 
             await checkpoint.salvar_registro(resultado)
@@ -516,8 +530,8 @@ def executar_fase_3(
     caminho_checkpoint: str = ARQUIVO_CHECKPOINT_PADRAO
 ) -> pd.DataFrame:
     """
-    Fase 3: Julgamento Semântico via LLM (Gemini) com tolerância a interrupções
-    e monitoramento visual detalhado de progresso e tempo restante (ETA).
+    Fase 3: Julgamento Semântico via LLM (Gemini) com tolerância a interrupções,
+    validação contextual Camada 2 (R1/R2) e monitoramento visual detalhado.
     """
     if df_fila_llm.empty:
         logging.info("A fila do LLM está vazia. Nenhuma inferência será realizada.")
@@ -527,7 +541,6 @@ def executar_fase_3(
     df_analytical_out['Protocolo'] = df_analytical_out['Protocolo'].astype(str)
 
     # Garante que colunas textuais/booleanas de destino tenham dtype 'object' antes do update()
-    # (previne LossySetitemError / TypeError caso uma coluna de nulos tenha sido inferida como float64 pelo Pandas)
     colunas_alvo_update = [
         'GI - Fundamentação Contextual',
         'GI - Grau de Evidência',
@@ -592,9 +605,60 @@ def executar_fase_3(
     # Reintegração estruturada no DataFrame analítico
     logging.info(f"Realizando merge estruturado de {len(df_resultados)} registros no DataFrame analítico...")
     df_analytical_out.set_index('Protocolo', inplace=True)
-    df_resultados.set_index('Protocolo', inplace=True)
+    df_resultados_idx = df_resultados.set_index('Protocolo')
 
-    df_analytical_out.update(df_resultados)
+    colunas_gi_presentes = [c for c in colunas_alvo_update if c in df_resultados_idx.columns]
+    df_analytical_out.update(df_resultados_idx[colunas_gi_presentes])
+
+    # Integração Camada 2 (Sinais R1 e R2 avaliados pelo LLM, quando disponíveis no checkpoint)
+    if 'R1_CONFIRMADO_LLM' in df_resultados_idx.columns and 'R1_STATUS' in df_analytical_out.columns:
+        s_r1_llm = df_resultados_idx['R1_CONFIRMADO_LLM'].dropna()
+        if not s_r1_llm.empty:
+            idx_comum_r1 = df_analytical_out.index.intersection(s_r1_llm.index)
+            r1_vals = s_r1_llm.loc[idx_comum_r1].astype(bool)
+            status_atual_r1 = df_analytical_out.loc[idx_comum_r1, 'R1_STATUS']
+
+            idx_r1_conf = idx_comum_r1[r1_vals & (status_atual_r1 != 'AFASTADO')]
+            idx_r1_afast = idx_comum_r1[(~r1_vals) & (status_atual_r1 == 'CANDIDATO')]
+
+            if len(idx_r1_conf) > 0:
+                df_analytical_out.loc[idx_r1_conf, 'R1_STATUS'] = 'CONFIRMADO'
+                df_analytical_out.loc[idx_r1_conf, 'R1_EVIDENCIA'] = (
+                    df_analytical_out.loc[idx_r1_conf, 'R1_EVIDENCIA'].fillna('Avaliação contextual LLM')
+                )
+                df_analytical_out.loc[idx_r1_conf, 'R1_REGRA'] = (
+                    'Confirmado na Camada 2 (LLM): Contratação de força de trabalho operacional identificada como objeto principal'
+                )
+            if len(idx_r1_afast) > 0:
+                df_analytical_out.loc[idx_r1_afast, 'R1_STATUS'] = 'AFASTADO'
+                df_analytical_out.loc[idx_r1_afast, 'R1_REGRA'] = (
+                    'Afastado na Camada 2 (LLM): Menção a função operacional avaliada como acessória ou não caracterizadora de substituição de pessoal'
+                )
+
+    if 'R2_CONFIRMADO_LLM' in df_resultados_idx.columns and 'R2_STATUS' in df_analytical_out.columns:
+        s_r2_llm = df_resultados_idx['R2_CONFIRMADO_LLM'].dropna()
+        if not s_r2_llm.empty:
+            idx_comum_r2 = df_analytical_out.index.intersection(s_r2_llm.index)
+            r2_vals = s_r2_llm.loc[idx_comum_r2].astype(bool)
+            status_atual_r2 = df_analytical_out.loc[idx_comum_r2, 'R2_STATUS']
+
+            idx_r2_conf = idx_comum_r2[r2_vals & (status_atual_r2 != 'AFASTADO')]
+            idx_r2_afast = idx_comum_r2[(~r2_vals) & (status_atual_r2 == 'CANDIDATO')]
+
+            if len(idx_r2_conf) > 0:
+                df_analytical_out.loc[idx_r2_conf, 'R2_STATUS'] = 'CONFIRMADO'
+                df_analytical_out.loc[idx_r2_conf, 'R2_EVIDENCIA'] = (
+                    df_analytical_out.loc[idx_r2_conf, 'R2_EVIDENCIA'].fillna('Avaliação contextual LLM')
+                )
+                df_analytical_out.loc[idx_r2_conf, 'R2_REGRA'] = (
+                    'Confirmado na Camada 2 (LLM): Execução de obra, engenharia ou manutenção predial identificada como núcleo do objeto'
+                )
+            if len(idx_r2_afast) > 0:
+                df_analytical_out.loc[idx_r2_afast, 'R2_STATUS'] = 'AFASTADO'
+                df_analytical_out.loc[idx_r2_afast, 'R2_REGRA'] = (
+                    'Afastado na Camada 2 (LLM): Termo de engenharia/obra avaliado como acessório, projeto ou aquisição de material'
+                )
+
     df_analytical_out.reset_index(inplace=True)
 
     # Normalização pós-merge vetorizada: garante integridade da regra de Divergência Cadastral Aparente
